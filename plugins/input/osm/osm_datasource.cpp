@@ -35,6 +35,11 @@
 
 // boost
 #include <boost/make_shared.hpp>
+#include <boost/algorithm/string.hpp>
+#include <boost/lexical_cast.hpp>
+#include <boost/tokenizer.hpp>
+#include <boost/format.hpp>
+
 
 #include "osm_datasource.hpp"
 #include "osm_featureset.hpp"
@@ -73,7 +78,7 @@ void osm_datasource::bind() const
     std::string parser = *params_.get<std::string>("parser", "libxml2");
     std::string url = *params_.get<std::string>("url", "");
     std::string bbox = *params_.get<std::string>("bbox", "");
-
+    boost::optional<std::string> extent_param  = *params_.get<std::string>("extent");
 
     // load the data
     if (url != "" && bbox != "")
@@ -118,16 +123,58 @@ void osm_datasource::bind() const
         desc_.add_descriptor(attribute_descriptor(*i, tagtypes.get_type(*i)));
     }
 
-    // Get the bounds of the data and set extent_ accordingly
-    bounds b = osm_data_->get_bounds();
-    extent_ =  box2d<double>(b.w, b.s, b.e, b.n);
-    is_bound_ = true;
+    if (extent_param)
+    {
+       boost::char_separator<char> sep(",");
+       boost::tokenizer<boost::char_separator<char> > tok(*extent_param,sep);
+       unsigned i = 0;
+       bool success = false;
+       double d[4];
+       for (boost::tokenizer<boost::char_separator<char> >::iterator beg=tok.begin(); beg!=tok.end();++beg)
+       {
+         try
+         {
+           d[i] = boost::lexical_cast<double>(boost::trim_copy(*beg));
+         }
+         catch (boost::bad_lexical_cast & ex)
+         {
+           clog << *beg << " : " << ex.what() << "\nAre your coordinates each separated by commas?\n";
+           break;
+         }
+         if (i==3)
+         {
+           success = true;
+           break;
+         }
+         ++i;
+       }
+       if (success)
+       {
+         extent_ = box2d<double>(d[0],d[1],d[2],d[3]);
+       }
+       else {
+         clog << "Could not use given extent, default to calculated extent from bounds.";
+         calculate_extent_from_bounds();
+       }
+    }
+    else
+    {
+      // Get the bounds of the data and set extent_ accordingly
+      calculate_extent_from_bounds();
+    }
 }
 
 osm_datasource::~osm_datasource()
 {
     // Do not do as is now static variable and cleaned up at exit
     //delete osm_data_;
+}
+
+void osm_datasource::calculate_extent_from_bounds() const
+{
+  bounds b = osm_data_->get_bounds();
+  extent_ =  box2d<double>(b.w, b.s, b.e, b.n);
+  is_bound_ = true;
 }
 
 std::string osm_datasource::name()
@@ -192,3 +239,4 @@ boost::optional<mapnik::datasource::geometry_t> osm_datasource::get_geometry_typ
     if (! is_bound_) bind();
     return boost::optional<mapnik::datasource::geometry_t>(mapnik::datasource::Collection);
 }
+

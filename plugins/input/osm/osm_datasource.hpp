@@ -50,6 +50,7 @@ public:
     boost::optional<mapnik::datasource::geometry_t> get_geometry_type() const;
     layer_descriptor get_descriptor() const;
     void bind() const;
+    void calculate_extent_from_bounds() const;
 
 private:
     mutable box2d<double> extent_;
